@@ -23,6 +23,13 @@ h2{font-size:15px;display:flex;align-items:center;gap:8px;margin-bottom:14px}
   left:3px;bottom:3px;background:#64748b;border-radius:50%;transition:.25s}
 input:checked+.slider{background:#0ea5e9}
 input:checked+.slider:before{transform:translateX(16px);background:#fff}
+.bl-status{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  border-radius:8px;margin-bottom:8px;font-size:12px;font-weight:500}
+.bl-status.loaded{background:#052e16;color:#4ade80}
+.bl-status.empty{background:#0c1a3a;color:#60a5fa}
+.bl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:background .3s}
+.bl-status.loaded .bl-dot{background:#22c55e;box-shadow:0 0 6px #22c55e88}
+.bl-status.empty .bl-dot{background:#3b82f6}
 .btn{width:100%;padding:9px;background:#334155;color:#e2e8f0;border:1px dashed #475569;
   border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit}
 .btn:hover{background:#475569}
@@ -52,6 +59,10 @@ input[type=file]{display:none}
   </label>
 </div>
 
+<div class="bl-status empty" id="blStatus">
+  <span class="bl-dot"></span>
+  <span id="blText">&#8593; Чёрный список не загружен</span>
+</div>
 <label class="btn" for="f">&#128194; Загрузить black_list.json</label>
 <input type="file" id="f" accept=".json">
 <div class="msg" id="msg"></div>

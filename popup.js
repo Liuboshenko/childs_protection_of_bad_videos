@@ -1,5 +1,17 @@
 // popup.js — Content Shield popup logic
 
+function setBlacklistIndicator(channelCount) {
+  const status = document.getElementById("blStatus");
+  const text = document.getElementById("blText");
+  if (channelCount > 0) {
+    status.className = "bl-status loaded";
+    text.textContent = "✓ Чёрный список активен · " + channelCount + " каналов";
+  } else {
+    status.className = "bl-status empty";
+    text.textContent = "↑ Чёрный список не загружен";
+  }
+}
+
 function loadStats() {
   chrome.runtime.sendMessage({ type: "STATS" }, (r) => {
     if (chrome.runtime.lastError) {
@@ -11,6 +23,7 @@ function loadStats() {
     document.getElementById("nCh").textContent = r.channels;
     document.getElementById("nBl").textContent = r.blocked;
     document.getElementById("shortsToggle").checked = !!r.block_all_shorts;
+    setBlacklistIndicator(r.channels);
 
     const el = document.getElementById("log");
     if (!r.recent || r.recent.length === 0) {
@@ -85,6 +98,7 @@ document.getElementById("f").addEventListener("change", (e) => {
       if (r && r.ok) {
         msg.className = "msg ok";
         msg.textContent = "Загружено: " + r.count + " каналов";
+        setBlacklistIndicator(r.count);
         setTimeout(loadStats, 500);
       } else {
         msg.className = "msg err";

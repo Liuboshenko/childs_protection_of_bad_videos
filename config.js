@@ -19,7 +19,7 @@ var SHIELD_CONFIG = {
   //             • вкладка YouTube → F12 → Console: логи content script
   //             • chrome://extensions → Service Worker → Inspect: логи background
   //
-  debug: true,
+  debug: false,
 
   // ── Поиск по детскому списку ───────────────────────────────
   //

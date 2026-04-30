@@ -21,20 +21,33 @@
   let navId = 0;
   let pendingShieldCid = null; // сохраняет ID от __shield_cid пока pageBlocked = true
 
+  // ── Безопасная отправка сообщений ────────────────────────────────────
+  // Перехватывает "Extension context invalidated" когда расширение
+  // перезагружают при открытой вкладке YouTube.
+
+  function send(msg, cb) {
+    try {
+      chrome.runtime.sendMessage(msg, (resp) => {
+        if (chrome.runtime.lastError) { if (cb) cb(null); return; }
+        if (cb) cb(resp);
+      });
+    } catch (_) {
+      if (cb) cb(null);
+    }
+  }
+
   // ── Конфиг ───────────────────────────────────────────────────────────
 
   function fetchConfig(cb) {
-    chrome.runtime.sendMessage({ type: "GET_CONFIG" }, (resp) => {
-      if (!chrome.runtime.lastError && resp) {
-        shortsBlocked = !!resp.block_all_shorts;
-      }
+    send({ type: "GET_CONFIG" }, (resp) => {
+      if (resp) shortsBlocked = !!resp.block_all_shorts;
       if (cb) cb();
     });
   }
 
   function maybeRedirectHome() {
     if (location.pathname === "/" && !location.search) {
-      chrome.runtime.sendMessage({ type: "MAYBE_REDIRECT_HOME" });
+      send({ type: "MAYBE_REDIRECT_HOME" });
       return true;
     }
     return false;
@@ -152,10 +165,10 @@
     log("blockIfNeeded →", channelId);
     pageBlocked = true;
     lastCheckedUrl = location.href;
-    chrome.runtime.sendMessage(
+    send(
       { type: "CHECK_AND_BLOCK", channelId, url: location.href },
       (resp) => {
-        if (chrome.runtime.lastError || !resp?.blocked) {
+        if (!resp?.blocked) {
           pageBlocked = false;
           // lastCheckedUrl НЕ сбрасываем — иначе MutationObserver создаёт бесконечный цикл.
           // Правильные ретраи обеспечивает videoId-проверка в channelIdFromScripts():
@@ -206,7 +219,7 @@
 
     if (shortsBlocked && isShortsUrl()) {
       pageBlocked = true;
-      chrome.runtime.sendMessage({ type: "BLOCK_TAB", name: "YouTube Shorts", url: location.href, isShorts: true });
+      send({ type: "BLOCK_TAB", name: "YouTube Shorts", url: location.href, isShorts: true });
       return;
     }
 
@@ -273,8 +286,8 @@
 
     const ids = [...new Set(toCheck.values())];
 
-    chrome.runtime.sendMessage({ type: "CHECK_BATCH", ids }, (resp) => {
-      if (chrome.runtime.lastError || !resp) return;
+    send({ type: "CHECK_BATCH", ids }, (resp) => {
+      if (!resp) return;
       const blocked = resp.blocked || {};
       toCheck.forEach((channelId, el) => {
         el.dataset.shieldChecked = "1";
@@ -346,7 +359,7 @@
       filterFeed();
       if (isShortsUrl() && !pageBlocked) {
         pageBlocked = true;
-        chrome.runtime.sendMessage({ type: "BLOCK_TAB", name: "YouTube Shorts", url: location.href, isShorts: true });
+        send({ type: "BLOCK_TAB", name: "YouTube Shorts", url: location.href, isShorts: true });
       }
     }
   });
@@ -380,7 +393,7 @@
     log("init →", location.href);
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
-    chrome.runtime.sendMessage({ type: "INJECT_HOOK" });
+    send({ type: "INJECT_HOOK" });
 
     fetchConfig(() => {
       if (maybeRedirectHome()) return;

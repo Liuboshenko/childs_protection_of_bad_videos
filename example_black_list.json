@@ -1,7 +1,14 @@
+//[RU]
 //Для использования данного файла переименуй его в black_list.json
 //и используй следующий формат 
 //так же для валидации данного файла как json после переименования полностью удали строки 
-// которые начинаются на // в данном случае это 4 строки 1,2,3,4
+// которые начинаются c // в данном случае это 11 строк, строки 1-11
+
+//[EN]
+//To use this file, rename it to blacklist.json
+//and use the following format
+//in the same way to validate this file as json after renaming, completely delete the lines
+// that start with // in this case, these are 11 lines 1-11
 {
   "block_all_shorts": true,
   "channels": [
@@ -9,7 +16,7 @@
     {"id": "UC5NbYeSMw8CKZ7IEeOOKHkA", "name": "@stalkerPbg", "reason": "Low values"},
     {"id": "UCmokxsRbxWKNO-dNnYfNsRA", "name": "", "reason": ""},
     {"id": "UC3c-5uMm4btnjbbhV8OWqGA", "name": "@WhiteLynx", "reason": "vulgar content"},
-    {"id": "UC1AXXfTSKcRUk53AhhMHCaw", "name": "@NaglyMetroRoyale", "reason": "Can't express a thought"},
+    {"id": "UC1AXXfTSKcRUk53AhhMHCaw", "name": "@NaglyMetroRoyale", "reason": "Can't express a thought"}
 
   ]
 }

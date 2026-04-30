@@ -67,6 +67,24 @@ input[type=file]{display:none}
 <input type="file" id="f" accept=".json">
 <div class="msg" id="msg"></div>
 
+<div style="height:1px;background:#1e293b;margin:12px 0"></div>
+
+<div class="row-toggle">
+  <span>&#128270; Поиск по детскому списку</span>
+  <label class="switch">
+    <input type="checkbox" id="searchToggle">
+    <span class="slider"></span>
+  </label>
+</div>
+
+<div class="bl-status empty" id="slStatus">
+  <span class="bl-dot"></span>
+  <span id="slText">&#8593; Список поиска не загружен</span>
+</div>
+<label class="btn" for="sf">&#128221; Загрузить searching_list.json</label>
+<input type="file" id="sf" accept=".json">
+<div class="msg" id="smsg"></div>
+
 <div class="log">
   <div class="log-title">Последние блокировки</div>
   <div id="log"></div>

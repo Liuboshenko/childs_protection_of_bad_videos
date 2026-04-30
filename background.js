@@ -11,38 +11,90 @@ importScripts("config.js");
 const log = (...a) => { if (SHIELD_CONFIG.debug) console.log("[Shield BG]", ...a); };
 
 let blockedChannels = new Map(); // id (lowercase) → name
-let blockAllShorts = true;
+let blockAllShorts  = true;
+let searchList      = []; // {num_entry, weight, request}[]
+let searchFromList  = true;
 
 // ── Загрузка конфига из storage ──────────────────────────────
 
 function loadConfig() {
   return new Promise((resolve) => {
-    chrome.storage.local.get(["blacklist", "block_all_shorts"], (result) => {
-      const data = result.blacklist;
-      blockedChannels.clear();
-      if (data && Array.isArray(data.channels)) {
-        for (const ch of data.channels) {
-          blockedChannels.set(ch.id.toLowerCase(), ch.name || ch.id);
+    chrome.storage.local.get(
+      ["blacklist", "block_all_shorts", "search_list", "search_from_list"],
+      async (result) => {
+        const data = result.blacklist;
+        blockedChannels.clear();
+        if (data && Array.isArray(data.channels)) {
+          for (const ch of data.channels) {
+            blockedChannels.set(ch.id.toLowerCase(), ch.name || ch.id);
+          }
         }
+
+        if (result.block_all_shorts === undefined) {
+          blockAllShorts = true;
+          chrome.storage.local.set({ block_all_shorts: true });
+        } else {
+          blockAllShorts = !!result.block_all_shorts;
+        }
+
+        const sl = result.search_list;
+        searchList = (sl && Array.isArray(sl.search_list)) ? sl.search_list : [];
+
+        if (result.search_from_list === undefined) {
+          searchFromList = true;
+          chrome.storage.local.set({ search_from_list: true });
+        } else {
+          searchFromList = !!result.search_from_list;
+        }
+
+        // Если список пуст — загружаем дефолтный бандлированный файл
+        if (!searchList.length) {
+          try {
+            const resp = await fetch(chrome.runtime.getURL("searching_list.json"));
+            const defaultData = await resp.json();
+            if (defaultData && Array.isArray(defaultData.search_list)) {
+              searchList = defaultData.search_list;
+              chrome.storage.local.set({ search_list: defaultData });
+              log("default search list loaded:", searchList.length);
+            }
+          } catch (e) {
+            log("default search list fetch error:", e);
+          }
+        }
+
+        log("config loaded → channels:", blockedChannels.size,
+            "| shorts:", blockAllShorts,
+            "| searchList:", searchList.length,
+            "| searchFromList:", searchFromList);
+        resolve();
       }
-      if (result.block_all_shorts === undefined) {
-        blockAllShorts = true;
-        chrome.storage.local.set({ block_all_shorts: true });
-      } else {
-        blockAllShorts = !!result.block_all_shorts;
-      }
-      log("config loaded → channels:", blockedChannels.size, "| shorts blocked:", blockAllShorts);
-      resolve();
-    });
+    );
   });
 }
 
 loadConfig();
 
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes.blacklist) loadConfig();
+  if (changes.blacklist)        loadConfig();
   if (changes.block_all_shorts) blockAllShorts = !!changes.block_all_shorts.newValue;
+  if (changes.search_list) {
+    const sl = changes.search_list.newValue;
+    searchList = (sl && Array.isArray(sl.search_list)) ? sl.search_list : [];
+  }
+  if (changes.search_from_list) searchFromList = !!changes.search_from_list.newValue;
 });
+
+// ── Взвешенный случайный выбор из search_list ────────────────
+
+function weightedRandom(list) {
+  const total = list.reduce((s, e) => s + (e.weight || 1), 0);
+  let r = Math.random() * total;
+  for (const e of list) {
+    r -= (e.weight || 1);
+    if (r <= 0) return e;
+  }
+  return list[list.length - 1];
+}
 
 // ── Проверка channel ID ─────────────────────────────────────
 
@@ -57,6 +109,22 @@ function checkChannel(channelId) {
 chrome.webNavigation.onBeforeNavigate.addListener(
   (details) => {
     if (details.frameId !== 0) return;
+
+    // Редирект главной страницы YouTube на целевой поиск
+    if (searchFromList && searchList.length > 0) {
+      try {
+        const u = new URL(details.url);
+        if (/youtube\.com$/i.test(u.hostname) && u.pathname === "/" && !u.search) {
+          const entry = weightedRandom(searchList);
+          const searchUrl =
+            "https://www.youtube.com/results?search_query=" +
+            encodeURIComponent(entry.request) + "#shield-redirect";
+          chrome.tabs.update(details.tabId, { url: searchUrl });
+          log("search redirect →", entry.request);
+          return;
+        }
+      } catch (_) {}
+    }
 
     if (blockAllShorts && /youtube\.com\/shorts(\/|$)/i.test(details.url)) {
       const blockUrl =
@@ -183,7 +251,48 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "GET_CONFIG") {
-    sendResponse({ block_all_shorts: blockAllShorts });
+    sendResponse({ block_all_shorts: blockAllShorts, search_from_list: searchFromList });
+    return true;
+  }
+
+  if (msg.type === "IMPORT_SEARCH_LIST") {
+    try {
+      const data = JSON.parse(msg.json);
+      if (!data.search_list || !Array.isArray(data.search_list)) {
+        sendResponse({ ok: false, error: 'Нет массива "search_list" в JSON' });
+        return true;
+      }
+      chrome.storage.local.set({ search_list: data }, () => {
+        searchList = data.search_list;
+        sendResponse({ ok: true, count: data.search_list.length });
+      });
+    } catch (e) {
+      sendResponse({ ok: false, error: e.message });
+    }
+    return true;
+  }
+
+  if (msg.type === "TOGGLE_SEARCH_LIST") {
+    searchFromList = !!msg.value;
+    chrome.storage.local.set({ search_from_list: searchFromList }, () => {
+      notifyYoutubeTabs({ type: "CONFIG_UPDATED", block_all_shorts: blockAllShorts, search_from_list: searchFromList });
+      sendResponse({ ok: true, value: searchFromList });
+    });
+    return true;
+  }
+
+  if (msg.type === "MAYBE_REDIRECT_HOME") {
+    if (searchFromList && searchList.length > 0 && sender.tab?.id) {
+      const entry = weightedRandom(searchList);
+      const searchUrl =
+        "https://www.youtube.com/results?search_query=" +
+        encodeURIComponent(entry.request) + "#shield-redirect";
+      chrome.tabs.update(sender.tab.id, { url: searchUrl });
+      log("SPA home redirect →", entry.request);
+      sendResponse({ redirected: true, query: entry.request });
+    } else {
+      sendResponse({ redirected: false });
+    }
     return true;
   }
 
@@ -250,7 +359,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "TOGGLE_SHORTS") {
     blockAllShorts = !!msg.value;
     chrome.storage.local.set({ block_all_shorts: blockAllShorts }, () => {
-      notifyYoutubeTabs({ type: "CONFIG_UPDATED", block_all_shorts: blockAllShorts });
+      notifyYoutubeTabs({ type: "CONFIG_UPDATED", block_all_shorts: blockAllShorts, search_from_list: searchFromList });
       sendResponse({ ok: true, value: blockAllShorts });
     });
     return true;
@@ -263,6 +372,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         blocked: (r.blockLog || []).length,
         recent: (r.blockLog || []).slice(-20).reverse(),
         block_all_shorts: blockAllShorts,
+        search_from_list: searchFromList,
+        search_list_count: searchList.length,
       });
     });
     return true;

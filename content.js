@@ -25,8 +25,36 @@
 
   function fetchConfig(cb) {
     chrome.runtime.sendMessage({ type: "GET_CONFIG" }, (resp) => {
-      if (!chrome.runtime.lastError && resp) shortsBlocked = !!resp.block_all_shorts;
+      if (!chrome.runtime.lastError && resp) {
+        shortsBlocked = !!resp.block_all_shorts;
+      }
       if (cb) cb();
+    });
+  }
+
+  function maybeRedirectHome() {
+    if (location.pathname === "/" && !location.search) {
+      chrome.runtime.sendMessage({ type: "MAYBE_REDIRECT_HOME" });
+      return true;
+    }
+    return false;
+  }
+
+  // ── Очистка поисковой строки после редиректа расширения ──────────────
+
+  function clearSearchBarIfShieldRedirect() {
+    if (location.hash !== "#shield-redirect") return;
+    history.replaceState(null, "", location.pathname + location.search);
+    log("shield redirect — scheduling search bar clears");
+
+    // YouTube устанавливает значение инпута асинхронно через Polymer.
+    // Очищаем в нескольких временных точках: до и после инициализации YouTube.
+    [50, 200, 500, 900, 1500, 2500, 4000].forEach((delay) => {
+      setTimeout(() => {
+        document
+          .querySelectorAll("input#search, input[name='search_query']")
+          .forEach((el) => { if (el.value) el.value = ""; });
+      }, delay);
     });
   }
 
@@ -267,11 +295,15 @@
 
   function onNavigate() {
     log("navigate →", location.href);
+    clearSearchBarIfShieldRedirect();
     pageBlocked    = false;
     lastCheckedUrl = "";
     const myId = ++navId;
 
     fetchConfig(() => {
+      if (navId !== myId) return;
+      if (maybeRedirectHome()) return;
+
       [0, 500, 1500].forEach((delay) => {
         setTimeout(() => {
           if (navId !== myId || pageBlocked) return;
@@ -351,11 +383,16 @@
     chrome.runtime.sendMessage({ type: "INJECT_HOOK" });
 
     fetchConfig(() => {
+      if (maybeRedirectHome()) return;
       checkCurrentPage();
       setTimeout(filterFeed, 1000);
       setTimeout(filterFeed, 3000);
     });
   }
+
+  // Проверяем хэш немедленно при document_start — до DOMContentLoaded,
+  // пока YouTube ещё не успел выполнить свой код и изменить location.hash.
+  clearSearchBarIfShieldRedirect();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
